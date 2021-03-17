@@ -323,13 +323,14 @@ def _PrepareBundles(working_dir, app_under_test_path, test_bundle_path):
   if not app_under_test_dir and os.path.isdir(plugins_path):
     try:
       app = next(filter(lambda x: x.endswith(".app"), os.listdir(plugins_path)))
+      app = os.path.join(plugins_path, app)
       app_dest_dir = os.path.join(
         working_dir,
         os.path.splitext(os.path.basename(app))[0] + '.app')
       if bundle_copied:
-        shutil.move(app, app_under_test_dir)
+        shutil.move(app, app_dest_dir)
       else:
-        shutil.copy(app, app_under_test_dir)
+        shutil.copy(app, app_dest_dir)
       # Only set this after the copy/move has successfully completed
       app_under_test_dir = app_dest_dir
     except StopIteration:
