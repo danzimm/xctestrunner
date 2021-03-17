@@ -303,6 +303,7 @@ def _PrepareBundles(working_dir, app_under_test_path, test_bundle_path):
         'The test bundle %s should be with .xctest, .ipa or .zip extension.'
         % test_bundle_path)
 
+  bundle_copied = False
   test_bundle_dir = os.path.join(
       working_dir,
       os.path.splitext(os.path.basename(test_bundle_path))[0] + '.xctest')
@@ -311,11 +312,28 @@ def _PrepareBundles(working_dir, app_under_test_path, test_bundle_path):
       extract_test_bundle_dir = bundle_util.ExtractTestBundle(
           test_bundle_path, working_dir)
       shutil.move(extract_test_bundle_dir, test_bundle_dir)
+      bundle_copied = True
     elif not os.path.abspath(test_bundle_path).startswith(working_dir):
       # Only copies the test bundle if it is not in working directory.
       shutil.copytree(test_bundle_path, test_bundle_dir)
+      bundle_copied = True
     else:
       test_bundle_dir = test_bundle_path
+  plugins_path = os.path.join(test_bundle_dir, "PlugIns")
+  if not app_under_test_dir and os.path.isdir(plugins_path):
+    try:
+      app = next(filter(lambda x: x.endswith(".app"), os.listdir(plugins_path)))
+      app_dest_dir = os.path.join(
+        working_dir,
+        os.path.splitext(os.path.basename(app))[0] + '.app')
+      if bundle_copied:
+        shutil.move(app, app_under_test_dir)
+      else:
+        shutil.copy(app, app_under_test_dir)
+      # Only set this after the copy/move has successfully completed
+      app_under_test_dir = app_dest_dir
+    except StopIteration:
+      pass
 
   return app_under_test_dir, test_bundle_dir
 
