@@ -42,6 +42,41 @@ options.
 This argument is only supported in Xcode 8+.""")
 
 
+class KVAction(argparse.Action):
+  @staticmethod
+  def value_from_string(str):
+    try:
+      return json.loads(str)
+    except json.JSONDecodeError:
+      return str
+
+  def __init__(self, option_strings, dest, **kwargs):
+    super().__init__(
+      option_strings,
+      dest,
+      nargs = None,
+      type = str,
+      default = {},
+      metavar = "KEY=VALUE",
+      **kwargs
+    )
+
+  def __call__(self, parser, namespace, values, option_string):
+    dest = self.dest
+    if not hasattr(namespace, dest):
+      setattr(namespace, dest, self.default)
+    key, _, value = values.partition("=")
+    if len(key) == 0 or len(value) == 0:
+      opt = None
+      for s in self.option_strings:
+        if s.startswith("--"):
+          opt = s
+          break
+      if not opt:
+        opt = self.option_strings[0]
+      raise argparse.ArgumentError(f"Expected arg of the form {self.metavar} for {opt}")
+    getattr(namespace, dest)[key] = KVAction.value_from_string(value)
+
 def _AddGeneralArguments(parser):
   """Adds general arguments to the parser."""
   parser.add_argument('-v', '--verbose', help='Increase output verbosity.',
@@ -77,8 +112,18 @@ def _AddGeneralArguments(parser):
 
   optional_arguments = parser.add_argument_group('Optional arguments')
   optional_arguments.add_argument(
+      '--launch-options',
+      action=KVAction,
+      help="See --launch_options_json_path. This allows you to specify each k/v pair via CLI args.",
+  )
+  optional_arguments.add_argument(
       '--launch_options_json_path',
       help=ios_constants.LAUNCH_OPTIONS_JSON_HELP)
+  optional_arguments.add_argument(
+      '--signing-options',
+      action=KVAction,
+      help="See --signing_options_json_path. This allows you to specify each k/v pair via CLI args.",
+  )
   optional_arguments.add_argument(
       '--signing_options_json_path',
       help=ios_constants.SIGNING_OPTIONS_JSON_HELP)
@@ -102,7 +147,7 @@ def _AddGeneralArguments(parser):
            'test ends.')
 
 
-def _AddTestSubParser(subparsers):
+def _AddTestSubParser(add_subparser):
   """Adds sub parser for sub command `test`."""
   def _Test(args):
     """The function of sub command `test`."""
@@ -118,11 +163,11 @@ def _AddTestSubParser(subparsers):
           test_bundle=args.test_bundle_path,
           xctestrun_file_path=args.xctestrun,
           test_type=args.test_type,
-          signing_options=_GetJson(args.signing_options_json_path))
-      session.SetLaunchOptions(_GetJson(args.launch_options_json_path))
+          signing_options=args.signing_options)
+      session.SetLaunchOptions(args.launch_options)
       return session.RunTest(args.id)
 
-  test_parser = subparsers.add_parser(
+  test_parser = add_subparser(
       'test',
       help='Run test directly on connecting iOS real device or existing iOS '
            'simulator.')
@@ -140,7 +185,7 @@ def _AddTestSubParser(subparsers):
   test_parser.set_defaults(func=_Test)
 
 
-def _AddSimulatorTestSubParser(subparsers):
+def _AddSimulatorTestSubParser(add_subparser):
   """Adds sub parser for sub command `simulator_test`."""
   def _RunSimulatorTest(args):
     """The function of running test with new simulator."""
@@ -153,8 +198,8 @@ def _AddSimulatorTestSubParser(subparsers):
           test_bundle=args.test_bundle_path,
           xctestrun_file_path=args.xctestrun,
           test_type=args.test_type,
-          signing_options=_GetJson(args.signing_options_json_path))
-      session.SetLaunchOptions(_GetJson(args.launch_options_json_path))
+          signing_options=args.signing_options)
+      session.SetLaunchOptions(args.launch_options)
 
       # In prior of Xcode 9, `xcodebuild test` will launch the Simulator.app
       # process. If there is Simulator.app before running test, it will cause
@@ -216,7 +261,7 @@ def _AddSimulatorTestSubParser(subparsers):
     except ios_errors.SimError:
       return runner_exit_codes.EXITCODE.SIM_ERROR
 
-  test_parser = subparsers.add_parser(
+  test_parser = add_subparser(
       'simulator_test',
       help='Run test on a new created simulator, which will be deleted '
            'after test finishes.')
@@ -250,9 +295,32 @@ def _BuildParser():
       formatter_class=argparse.RawTextHelpFormatter)
   _AddGeneralArguments(parser)
   subparsers = parser.add_subparsers(help='Sub-commands help')
-  _AddTestSubParser(subparsers)
-  _AddSimulatorTestSubParser(subparsers)
+  def add_subparser(*args, **kwargs):
+      nonlocal subparsers
+      res = subparsers.add_parser(*args, **kwargs)
+      _AddGeneralArguments(res)
+      return res
+  _AddTestSubParser(add_subparser)
+  _AddSimulatorTestSubParser(add_subparser)
   return parser
+
+
+def _FinalizeArgs(args):
+  args.signing_options = _MergeDicts(
+      _GetJson(args.signing_options_json_path),
+      args.signing_options)
+  args.launch_options = _MergeDicts(
+      _GetJson(args.launch_options_json_path),
+      args.launch_options)
+  return args
+
+
+def _MergeDicts(base, new):
+  res = dict(base) if base else {}
+  if new:
+    for k, v in new.items():
+      res[k] = v
+  return res
 
 
 def _GetJson(json_path):
@@ -315,7 +383,8 @@ def main(argv):
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(message)s')
   else:
     logging.basicConfig(format='%(asctime)s %(message)s')
-  exit_code = args.func(args)
+  _FinalizeArgs(args)
+  exit_code = args.func(_FinalizeArgs(args))
   logging.info('Done.')
   return exit_code
 
