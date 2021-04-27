@@ -19,10 +19,6 @@ py_binary(
         ["test_runner/*.py"],
         exclude = ["test_runner/TestProject/**"],
     ),
-    compiler_args = [
-        "--interpreter",
-        "/usr/bin/python3",
-    ],
     data = glob(["test_runner/TestProject/**"]),
     main = "test_runner/ios_test_runner.py",
     python_version = "PY3",
