@@ -306,20 +306,20 @@ def _BuildParser():
 
 
 def _FinalizeArgs(args):
-  args.signing_options = _MergeDictsWithJsonValues(
+  args.signing_options = _MergeDicts(
       _GetJson(args.signing_options_json_path),
       args.signing_options)
-  args.launch_options = _MergeDictsWithJsonValues(
+  args.launch_options = _MergeDicts(
       _GetJson(args.launch_options_json_path),
       args.launch_options)
   return args
 
 
-def _MergeDictsWithJsonValues(base, new):
+def _MergeDicts(base, new):
   res = dict(base) if base else {}
   if new:
     for k, v in new.items():
-      res[k] = json.loads(v)
+      res[k] = v
   return res
 
 
